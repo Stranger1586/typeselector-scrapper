@@ -1,0 +1,19 @@
+{
+    "name": "typeselector-scrapper",
+    "version": "1.0.0",
+    "description": "TypeSelector's scrapper, it is used to fetch and format data from the google fonts main site.",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "start": "node index.js"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "chalk": "4.1.2",
+        "cli-progress": "^3.10.0",
+        "node-console-colors": "^1.1.4",
+        "node-status": "^1.0.0",
+        "puppeteer": "^13.1.3"
+    }
+}
