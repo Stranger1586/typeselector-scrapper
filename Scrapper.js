@@ -190,7 +190,8 @@ class Scrapper {
         const stringifyData = JSON.stringify(this.getGoogleFontsListAndMeta());
         const date = new Date();
         const timeStamp = date.getDate() + '-' + (date.getMonth() + 1) + '-' + date.getFullYear();
-        fs.writeFileSync(`fonts__${timeStamp}.json`, stringifyData);
+        fs.unlinkSync(`./data/*.json`);
+        fs.writeFileSync(`./data/fonts__${timeStamp}.json`, stringifyData);
         console.log(`${chalk.green.bold('Success:')} Step 5 -- Completed: Data successfully saved to file.`);
     }
     getGoogleFontsListAndMeta() {
