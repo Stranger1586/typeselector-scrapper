@@ -2,15 +2,10 @@ const fs = require('fs');
 const chalk = require('chalk');
 const status = require('node-status')
 const cliProgress = require('cli-progress');
+const { JSDOM } = require("jsdom")
+const { Cluster } = require('puppeteer-cluster');
+const puppeteer = require('puppeteer');
 
-const scraperObject = {
-    url: 'http://books.toscrape.com',
-    async scraper(browser) {
-        let page = await browser.newPage();
-        console.log(`Navigating to ${this.url}...`);
-        await page.goto(this.url);
-    }
-}
 
 class Scrapper {
     urls = {
@@ -18,82 +13,80 @@ class Scrapper {
         viewFont: "https://fonts.google.com/specimen/",
         listGoogleFonts: "https://www.googleapis.com/webfonts/v1/webfonts?key="
     };
-    apiKey = "AIzaSyDdLownANYUxO2mKslgv5K4BXnbYSPrzVA";
-    browserInstance;
-    page;
+    apiKey = process.env.GOOGLE_API_KEY;
+    nonConcurrentBrowser = {
+        browserInstance: null,
+        page: null
+    };
+    skippedFonts = [];
     googleFontsList;
     googleFontsVariable;
     googleFontsMeta;
 
     googleFontsListAndMeta = [];
-    constructor(chromiumInstance) {
-        this.browserInstance = chromiumInstance;
+
+    cluster;
+    errors = [];
+
+
+    async init() {
+        console.log(`${chalk.cyan.bold('Info:')} Launching the non concurrent browser.`);
+        this.nonConcurrentBrowser.browserInstance = await puppeteer.launch();
+        this.nonConcurrentBrowser.page = await this.nonConcurrentBrowser.browserInstance.newPage();
+    }
+    async initCluster() {
+        console.log(`${chalk.green.bold('Info:')} Launching the concurrent browser cluster.`);
+        this.cluster = await Cluster.launch({
+            concurrency: Cluster.CONCURRENCY_PAGE,
+            maxConcurrency: 5,
+            monitor: true,
+            puppeteerOptions: {
+                headless: true,
+                defaultViewport: {
+                    width: 1920,
+                    height: 1280,
+                }
+            }
+        });
+
     }
     async generateGoogleFontsList() {
         console.log(`${chalk.cyan.bold('Info:')} Step 1: Fetching a list of all available google fonts...`);
-        try {
-            await this.page.goto(`${this.urls.listGoogleFonts + this.apiKey}`);
-        } catch (error) {
-            console.log(`${chalk.red.bold('Error:')} Step 1 -- Failed: An error occurred while attempting to fetch a list of google fonts.`);
-            throw error;
+
+        await this.nonConcurrentBrowser.page.goto(`${this.urls.listGoogleFonts + this.apiKey}`);
+        const JSONResponse = await this.nonConcurrentBrowser.page.evaluate(() => {
+            return (JSON.parse(document.getElementsByTagName('pre')[0].textContent));
+        });
+        if (JSONResponse.error) {
+            console.log(`${chalk.red.bold('Error:')} Step 1 -- Failed: ${JSONResponse.error.message}!`);
+            throw JSONResponse.error.message
             return;
         }
-        try {
-            const googleFontsResponseJson = await this.getPageJson();
-            if (googleFontsResponseJson.error) {
-                console.log(`${chalk.red.bold('Error:')} Step 1 -- Failed: ${googleFontsResponseJson.error.message}!`);
-                throw googleFontsResponseJson.error.message
-                await this.closeBrowser();
-                return;
-            }
-            console.log(`${chalk.green.bold('Success:')} Step 1 -- Completed: a list of google fonts has been acquired!`);
-            this.googleFontsList = googleFontsResponseJson.items;
-        } catch (error) {
-            console.log(`${chalk.red.bold('Error:')} Step 1 -- Failed: An error occurred while attempting to extract a json file from the url:'${this.urls.listGoogleFonts + this.apiKey}'.`);
-            throw error;
-        }
-    }
-    async getPageJson() {
-        const JSONContainerElement = await this.page.$('pre');
-        const JSONString = await this.page.evaluate(el => el.textContent, JSONContainerElement)
-        return (JSON.parse(JSONString));
-    }
-    async closeBrowser() {
-        console.log(`${chalk.bgGreen.white.bold('Info:')} Closing browser instance...`);
-        this.browserInstance.close();
-    }
-    async openPage() {
-        console.log(`${chalk.cyan.bold('Status:')} Opening Page`);
-        this.page = await this.browserInstance.newPage();
+        this.googleFontsList = JSONResponse.items;
     }
 
     async fetchGoogleVariableFontsList() {
-        console.log(`${chalk.cyan.bold('Info:')} Step 2: Fetching a list of all variable google fonts...`);
-        try {
-            await this.page.goto(this.urls.listVariableFonts);
-        } catch (error) {
-            console.log(`${chalk.red.bold('Error:')} Step 2 --- Failed: The following error occurred while attempting to fetch a list of google variable fonts from the following url :'${this.urls.listVariableFonts}'.`);
-            throw new error;
-            return;
-        }
-        try {
-            this.googleFontsVariable = await this.getPageJson();
-        } catch (error) {
-            console.log(`${chalk.red.bold('Error:')} Step 2 --- Failed: The following error occurred while attempting to acquire the variable font JSON data.`);
-            throw new error;
-            return;
-        }
-        console.log(`${chalk.green.bold('Success:')} Step 2 -- Completed: a list of google variable fonts has been acquired!`);
+        console.log(`${chalk.cyan.bold('Info:')} Step 2: Fetching a list of variable fonts...`);
+        await this.nonConcurrentBrowser.page.goto(`${this.urls.listVariableFonts}`);
+        this.googleFontsVariable = await this.nonConcurrentBrowser.page.evaluate(() => {
+            return (JSON.parse(document.getElementsByTagName('pre')[0].textContent));
+        });
+        await this.closeNonConcurrentBrowser();
     }
-
-
-    async formatGoogleFontData() {
-        console.log(`${chalk.cyan.bold('Status:')} Now maping the google fonts to the variable fonts list...`);
+    formatGoogleFontData() {
+        console.log(`${chalk.cyan.bold('Info:')} Step 3: Mapping the google fonts list to the variable fonts list...`);
         this.googleFontsList = this.googleFontsList.map((font) => {
-            font.id = this.getFontId(font.family);
-            font.isVariable = false;
-            font.loaded = false;
-            font.allVariantsLoaded = false;
+            const { family, subsets, ...others } = fontOriginal;
+            let font = {
+				...others,
+				family,
+				id: this.getFontId(family),
+				providers: "google",
+				isVariable: false,
+                loaded:false,
+                allVariantsLoaded:false,
+				scripts: subsets
+			};
             if (this.googleFontsVariable[font.id]) {
                 font.isVariable = true;
                 return { ...font, ...this.googleFontsVariable[font.id] }
@@ -108,38 +101,161 @@ class Scrapper {
         return this.googleFontsList;
     }
 
-    async getFontsMetaData() {
-        console.log(`${chalk.cyan.bold('Info:')} Step 3: Attempting to acquire the meta data of each font on the list...`);
-        const progressBar = new cliProgress.SingleBar({
-            format: 'Scrapping Progress |' + chalk.cyan('{bar}') + '| {percentage}% || {value}/{total} Fonts || Duration: {duration_formatted}',
-            barCompleteChar: '\u2588',
-            barIncompleteChar: '\u2591',
-            hideCursor: false        
-        }, cliProgress.Presets.shades_classic);
-        const googleFontsList=this.getGoogleFontsList();
-        const googleFontsCount=googleFontsList.length;
-
-        progressBar.start(googleFontsList.length, 0);
-        let i=0;
-        for (const font of googleFontsList) {
-            await this.getFontMeta(font);
-            if(i===googleFontsCount) { 
-                console.log(`${chalk.green.bold('Success:')} Step 4 -- Completed: Finished scrapping the meta data of all google fonts.`);
-                this.saveData();    
+    async testRun() {
+        this.googleFontsList = [
+            {
+                "family": "Noto Sans Buhid",
+                "variants": ["regular", "italic"],
+                "subsets": ["latin"],
+                "version": "v20",
+                "lastModified": "2022-01-27",
+                "files": { "regular": "http://fonts.gstatic.com/s/abeezee/v20/esDR31xSG-6AGleN6tKukbcHCpE.ttf", "italic": "http://fonts.gstatic.com/s/abeezee/v20/esDT31xSG-6AGleN2tCklZUCGpG-GQ.ttf" },
+                "category": "sans-serif",
+                "kind": "webfonts#webfont",
+                "id": "notosansbuhid",
+                "isVariable": false,
+                "loaded": false,
+                "allVariantsLoaded": false,
+                "fontMeta": { "description": [], "authors": [], "license": {} }
             }
-            i++;
-            progressBar.update(i);
-        }
+        ];
+        await this.getFontsMetaData();
     }
-    async getFontMeta(font) {
-        try {
-            let url = `${this.urls.viewFont + font.family.replace(" ", "+")}#about`;
-            await this.page.goto(url);
+    async getFontsMetaData() {
+        console.log(`${chalk.cyan.bold('Info:')} Step 4: Attempting to parse each font on the list...`);
+        const googleFontsList = this.getGoogleFontsList();
+        this.cluster.on('taskerror', (err, data) => {
+            console.log(`Error crawling ${(typeof data === "string") ? data : data.url}: ${err.message}`);
+            this.logError(`Error crawling ${(typeof data === "string") ? data : data.url}: ${err.message}`);
+        });
+        await this.cluster.task(async ({ page, data }) => {
+            await page.setRequestInterception(true);
+            page.on("request", (request) => {
+                if (
+                    ["image", "font", "manifest", "media"].includes(request.resourceType()) ||
+                    request.url().includes("analytics")
+                ) {
+                    return request.abort();
+                }
+                return request.continue();
+            });
+            await page.goto(data.url, {
+                waitUntil: 'networkidle0'
+            });
+
+            let fontMeta = await page.evaluate(() => {
+                if (!(document.querySelector('gf-sticky-navbar'))) {
+ /*                    let redirectURL = '';
+                    if (!document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1]) {
+                        redirectURL = document.querySelector('.cdk-overlay-pane').querySelectorAll("a")[0].href;
+                    } else {
+                        redirectURL = document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href;
+                    } */
+                    return {
+                        redirectURL:document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href,
+                        hasSpecialText: true,
+                        placeholderText: document.querySelector("gf-content-editable").innerText
+                    }
+                }
+                //  About Font
+                data = () => {
+                    // Font License                    
+                    const anchor = document.querySelector("section#license .license__paragraph a");
+                    const license = {
+                        name: anchor.textContent,
+                        url: anchor.href,
+                    }
+                    const hasSpecialText = false;
+                    // Font Info
+                    const description = Array.from(document.querySelectorAll("section#about .specimen__about-description p")).map(({ innerHTML }) => (innerHTML));
+
+                    // Author Info
+                    const authorBoxes = document.querySelectorAll("section#about .specimen__designers gf-designer");
+                    const authors = Array.from(authorBoxes).map((ele) => {
+                        const avatarEle = ele.querySelector('img');
+                        const roleEle = ele.querySelector('.mat-text--secondary');
+                        const bioEle = ele.querySelector('.designer-bio');
+                        return {
+                            avatar: (avatarEle) ? avatarEle.src : null,
+                            name: ele.querySelector('[itemprop="name"]').textContent,
+                            role: (roleEle) ? roleEle.textContent : null,
+                            bio: (bioEle) ? bioEle.innerHTML : null
+                        }
+                    });
+                    return { hasSpecialText, license, description, authors };
+                };
+                return data();
+
+            });
+
+            if (fontMeta.hasOwnProperty("redirectURL")) {
+
+                await page.goto(fontMeta.redirectURL, {
+                    waitUntil: "networkidle2",
+                });
+                let response = await page.evaluate(() => {
+                    const anchor = document.querySelector("aside.about__license a");
+                    const license = {
+                        name: anchor.textContent,
+                        url: anchor.href,
+                    };
+
+                    // Font Info
+                    const description = Array.from(document.querySelectorAll("article.about__article p"))
+                        .map(({ innerHTML }) => (innerHTML));
+                    return {
+                        license,
+                        description
+                    };
+                });
+                delete fontMeta.redirectURL;
+                fontMeta = { ...fontMeta, ...response };
+            }
+
+            this.googleFontsListAndMeta.push({
+                ...googleFontsList.find(gFont => gFont.id === data.font.id), fontMeta
+            });
+        });
+
+        for (let i = 0; i < googleFontsList.length; i++) {
+            const font = googleFontsList[i];
+            this.cluster.queue({
+                url: this.urls.viewFont + `${font.family.replace(/ /g, "+")}`,
+                font: font
+            });
         }
-        catch (error) {
-            console.log(`An error occurred while attempting to visit the page (${url})...`);
-            throw error;
-        }
+        await this.cluster.idle();
+    }
+    async closeNonConcurrentBrowser() {
+        await this.nonConcurrentBrowser.browserInstance.close();
+    }
+    async saveAndExit() {
+        await this.cluster.close();
+        this.saveData();
+    }
+    logError(error) {
+        this.errors.push(error);
+    }
+    writeErrorsToDisk() {
+        if (this.errors.length === 0) return;
+        const encodedErrors = JSON.stringify(this.errors);
+        fs.writeFileSync(`./logs/error-log.json`, encodedErrors);
+    }
+    async testPage() {
+        let testUrl = 'https://fonts.google.com/specimen/Noticia+Text';
+        console.log(`Testing the url '${testUrl}'`);
+        this.pages.main.goto(testUrl);
+        await this.pages.main.waitForSelector('section#rssed').catch(
+            (error) => {
+                console.log('Timeout exceeded, starting again');
+                let runAgain = async () => {
+                    await this.testPage();
+                }
+                runAgain();
+            }
+        );
+    }
+    async parseFont(font) {
         let fontMeta = {
             description: [],
             authors: [],
@@ -148,14 +264,8 @@ class Scrapper {
                 url: null
             }
         };
-        // Wait for sections to load
-        await this.page.waitForSelector('section#about');
-        await this.page.waitForSelector('section#license');
-
         //  About Font
-        const fontDesignerSectionElements = await this.page.$$('section#about .specimen__designers gf-designer');
-
-        fontMeta = await this.page.evaluate(() => {
+        fontMeta = () => {
             // Font License
             const anchor = document.querySelector("section#license .license__paragraph a");
             const license = {
@@ -163,24 +273,24 @@ class Scrapper {
                 url: anchor.href,
             }
             // Font Info
-            const p = document.querySelectorAll("section#about .specimen__about-description p");
-            const description = Array.from(p).map(({ innerHTML }) => (innerHTML));
+            const description = Array.from(document.querySelectorAll("section#about .specimen__about-description p")).map(({ innerHTML }) => (innerHTML));
 
             // Author Info
             const authorBoxes = document.querySelectorAll("section#about .specimen__designers gf-designer");
             const authors = Array.from(authorBoxes).map((ele) => {
-                const avatarEle=ele.querySelector('img');
-                const roleEle=ele.querySelector('.mat-text--secondary');
-                const bioEle=ele.querySelector('.designer-bio');
+                const avatarEle = ele.querySelector('img');
+                const roleEle = ele.querySelector('.mat-text--secondary');
+                const bioEle = ele.querySelector('.designer-bio');
                 return {
                     avatar: (avatarEle) ? avatarEle.src : null,
-                    name:ele.querySelector('[itemprop="name"]').textContent,
+                    name: ele.querySelector('[itemprop="name"]').textContent,
                     role: (roleEle) ? roleEle.textContent : null,
                     bio: (bioEle) ? bioEle.innerHTML : null
                 }
             });
             return { license, description, authors };
-        });
+        };
+
         this.googleFontsListAndMeta.push({
             ...this.googleFontsList.find(gFont => gFont.id === font.id), fontMeta
         });
@@ -190,12 +300,14 @@ class Scrapper {
         const stringifyData = JSON.stringify(this.getGoogleFontsListAndMeta());
         const date = new Date();
         const timeStamp = date.getDate() + '-' + (date.getMonth() + 1) + '-' + date.getFullYear();
-        fs.unlinkSync(`./data/*.json`);
-        fs.writeFileSync(`./data/fonts__${timeStamp}.json`, stringifyData);
+        fs.writeFileSync(`./data/fonts.json`, stringifyData);
         console.log(`${chalk.green.bold('Success:')} Step 5 -- Completed: Data successfully saved to file.`);
     }
     getGoogleFontsListAndMeta() {
         return this.googleFontsListAndMeta;
+    }
+    async getPageJson() {
+        return (JSON.parse(document.getElementsByTagName('pre')[0].textContent));
     }
 }
 

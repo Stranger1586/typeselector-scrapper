@@ -1,8 +1,22 @@
-const browserObject = require('./browser');
-const scraperController = require('./pageController');
+require('dotenv').config();
+const Scrapper = require('./Scrapper');
+const chalk = require('chalk');
 
-//Start the browser and create a browser instance
-let browserInstance = browserObject.startBrowser();
+async function start(browserInstances) {
+    console.log(`${chalk.bgGreen.white.bold('Initiating...')}`);
+    try {
+            const scrapper = new Scrapper();
+            await scrapper.init();
+            await scrapper.generateGoogleFontsList();
+            await scrapper.fetchGoogleVariableFontsList();
+            await scrapper.formatGoogleFontData();
+            await scrapper.initCluster();
+            await scrapper.getFontsMetaData();
+            await scrapper.saveAndExit();
+    }
+    catch (error) {
+            console.log(`${chalk.bgRed.white.bold('Critical Error:')} ${error}`);
+    }
+}
 
-// Pass the browser instance to the scraper controller
-scraperController(browserInstance)
+start();
