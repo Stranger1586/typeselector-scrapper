@@ -38,7 +38,7 @@ class Scrapper {
         console.log(`${chalk.green.bold('Info:')} Launching the concurrent browser cluster.`);
         this.cluster = await Cluster.launch({
             concurrency: Cluster.CONCURRENCY_PAGE,
-            maxConcurrency: 5,
+            maxConcurrency: 10,
             monitor: true,
             puppeteerOptions: {
                 headless: true,

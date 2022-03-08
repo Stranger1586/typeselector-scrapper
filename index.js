@@ -2,7 +2,7 @@ require('dotenv').config();
 const Scrapper = require('./Scrapper');
 const chalk = require('chalk');
 
-async function start(browserInstances) {
+async function start() {
     console.log(`${chalk.bgGreen.white.bold('Initiating...')}`);
     try {
             const scrapper = new Scrapper();
