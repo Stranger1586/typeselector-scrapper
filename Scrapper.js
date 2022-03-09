@@ -1,8 +1,5 @@
 const fs = require('fs');
 const chalk = require('chalk');
-const status = require('node-status')
-const cliProgress = require('cli-progress');
-const { JSDOM } = require("jsdom")
 const { Cluster } = require('puppeteer-cluster');
 const puppeteer = require('puppeteer');
 
