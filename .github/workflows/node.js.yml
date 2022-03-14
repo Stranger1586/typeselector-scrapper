@@ -14,8 +14,7 @@ jobs:
     strategy:
       matrix:
         node-version: [14.x]
-    environment: main
-    
+        
     steps:
     - uses: actions/checkout@v2
     - name: Use Node.js ${{ matrix.node-version }}
@@ -36,14 +35,11 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: npm ci --ignore-scripts
       
-    - name: Testing
-      run: npm echo $GOOGLE_API_KEY 
-      env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
     - name: Scrapping
       run: npm run start --if-present 
       env:
+          CI: true
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
     - name: Test
