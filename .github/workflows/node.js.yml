@@ -39,7 +39,7 @@ jobs:
       run: npm install
       
     - name: Scrapping
-      run: npm run start --if-present
+      run: npm run start --if-present && echo $GOOGLE_API_KEY
       env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
 
