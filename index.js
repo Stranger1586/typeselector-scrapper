@@ -4,6 +4,7 @@ const chalk = require('chalk');
 
 async function start() {
     console.log(`${chalk.bgGreen.white.bold('Initiating...')}`);
+    console.log(process.env);
     console.log(process.env.GOOGLE_API_KEY);
     process.exit(1);
 
