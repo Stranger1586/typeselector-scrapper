@@ -72,9 +72,10 @@ class Scrapper {
     }
     formatGoogleFontData() {
         console.log(`${chalk.cyan.bold('Info:')} Step 3: Mapping the google fonts list to the variable fonts list...`);
-        this.googleFontsList = this.googleFontsList.map((font) => {
+        let font;
+        this.googleFontsList = this.googleFontsList.map((fontOriginal) => {
             const { family, subsets, ...others } = fontOriginal;
-            let font = {
+            font = {
 				...others,
 				family,
 				id: this.getFontId(family),
