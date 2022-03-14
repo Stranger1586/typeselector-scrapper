@@ -13,9 +13,11 @@ async function start() {
             await scrapper.initCluster();
             await scrapper.getFontsMetaData();
             await scrapper.saveAndExit();
+            process.exit();
     }
     catch (error) {
             console.log(`${chalk.bgRed.white.bold('Critical Error:')} ${error}`);
+            process.exit(1);
     }
 }
 
