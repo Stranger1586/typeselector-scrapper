@@ -34,10 +34,7 @@ jobs:
     - name: Install dependencies
       if: steps.cache.outputs.cache-hit != 'true'
       run: npm ci --ignore-scripts
-     
-    - name: Install packages
-      run: npm install
-      
+
     - name: Scrapping
       run: npm run start --if-present 
       env:
