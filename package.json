@@ -4,7 +4,7 @@
     "description": "TypeSelector's scrapper, it is used to fetch and format data from the google fonts main site.",
     "main": "index.js",
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1",
+        "test": "mocha --timeout 10000",
         "start": "node index.js"
     },
     "author": "",
@@ -16,6 +16,7 @@
         "puppeteer-cluster": "^0.23.0"
     },
     "devDependencies": {
-        "jest": "^27.5.1"
+        "expect.js": "^0.3.1",
+        "mocha": "^9.2.1"
     }
 }
