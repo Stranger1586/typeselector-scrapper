@@ -1,6 +1,6 @@
 const { readFileSync, readFile } = require('fs');
 const assert = require('assert');
-const expect = require('expect');
+const expect = require('expect.js');
 
 
 
@@ -28,6 +28,6 @@ describe('The JSON File', function () {
         assert.equal(typeof fontsJSON, "object")
     });
     it('Contain at least 1100 fonts.', () => {
-        expect(fontsJSON.length).toBeGreaterThan(1100);
+        expect(fontsJSON.length).to.be.greaterThan(1100)
     });
 });
