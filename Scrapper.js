@@ -31,14 +31,14 @@ class Scrapper {
         this.nonConcurrentBrowser.browserInstance = await puppeteer.launch();
         this.nonConcurrentBrowser.page = await this.nonConcurrentBrowser.browserInstance.newPage();
     }
-    async initCluster() {
+    async initCluster(headless=true) {
         console.log(`${chalk.green.bold('Info:')} Launching the concurrent browser cluster.`);
         this.cluster = await Cluster.launch({
             concurrency: Cluster.CONCURRENCY_PAGE,
             maxConcurrency: 10,
             monitor: true,
             puppeteerOptions: {
-                headless: true,
+                headless,
                 defaultViewport: {
                     width: 1920,
                     height: 1280,
@@ -76,15 +76,15 @@ class Scrapper {
         this.googleFontsList = this.googleFontsList.map((fontOriginal) => {
             const { family, subsets, ...others } = fontOriginal;
             font = {
-				...others,
-				family,
-				id: this.getFontId(family),
-				providers: "google",
-				isVariable: false,
-                loaded:false,
-                allVariantsLoaded:false,
-				scripts: subsets
-			};
+                ...others,
+                family,
+                id: this.getFontId(family),
+                providers: "google",
+                isVariable: false,
+                loaded: false,
+                allVariantsLoaded: false,
+                scripts: subsets
+            };
             if (this.googleFontsVariable[font.id]) {
                 font.isVariable = true;
                 return { ...font, ...this.googleFontsVariable[font.id] }
@@ -102,15 +102,28 @@ class Scrapper {
     async testRun() {
         this.googleFontsList = [
             {
-                "family": "Noto Sans Buhid",
+                "family": "Noto Sans",
                 "variants": ["regular", "italic"],
                 "subsets": ["latin"],
                 "version": "v20",
                 "lastModified": "2022-01-27",
-                "files": { "regular": "http://fonts.gstatic.com/s/abeezee/v20/esDR31xSG-6AGleN6tKukbcHCpE.ttf", "italic": "http://fonts.gstatic.com/s/abeezee/v20/esDT31xSG-6AGleN2tCklZUCGpG-GQ.ttf" },
                 "category": "sans-serif",
                 "kind": "webfonts#webfont",
-                "id": "notosansbuhid",
+                "id": "notosans",
+                "isVariable": false,
+                "loaded": false,
+                "allVariantsLoaded": false,
+                "fontMeta": { "description": [], "authors": [], "license": {} }
+            },
+            {
+                "family": "Noto Sans Display",
+                "variants": ["regular", "italic"],
+                "subsets": ["latin"],
+                "version": "v20",
+                "lastModified": "2022-01-27",
+                "category": "sans-serif",
+                "kind": "webfonts#webfont",
+                "id": "notosansdisplay",
                 "isVariable": false,
                 "loaded": false,
                 "allVariantsLoaded": false,
@@ -123,7 +136,6 @@ class Scrapper {
         console.log(`${chalk.cyan.bold('Info:')} Step 4: Attempting to parse each font on the list...`);
         const googleFontsList = this.getGoogleFontsList();
         this.cluster.on('taskerror', (err, data) => {
-            console.log(`Error crawling ${(typeof data === "string") ? data : data.url}: ${err.message}`);
             this.logError(`Error crawling ${(typeof data === "string") ? data : data.url}: ${err.message}`);
         });
         await this.cluster.task(async ({ page, data }) => {
@@ -143,14 +155,8 @@ class Scrapper {
 
             let fontMeta = await page.evaluate(() => {
                 if (!(document.querySelector('gf-sticky-navbar'))) {
- /*                    let redirectURL = '';
-                    if (!document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1]) {
-                        redirectURL = document.querySelector('.cdk-overlay-pane').querySelectorAll("a")[0].href;
-                    } else {
-                        redirectURL = document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href;
-                    } */
                     return {
-                        redirectURL:document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href,
+                        redirectURL: document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href,
                         hasSpecialText: true,
                         placeholderText: document.querySelector("gf-content-editable").innerText
                     }
@@ -187,7 +193,6 @@ class Scrapper {
             });
 
             if (fontMeta.hasOwnProperty("redirectURL")) {
-
                 await page.goto(fontMeta.redirectURL, {
                     waitUntil: "networkidle2",
                 });
@@ -209,7 +214,6 @@ class Scrapper {
                 delete fontMeta.redirectURL;
                 fontMeta = { ...fontMeta, ...response };
             }
-
             this.googleFontsListAndMeta.push({
                 ...googleFontsList.find(gFont => gFont.id === data.font.id), fontMeta
             });
@@ -299,7 +303,9 @@ class Scrapper {
         const date = new Date();
         const timeStamp = date.getDate() + '-' + (date.getMonth() + 1) + '-' + date.getFullYear();
         fs.writeFileSync(`./data/fonts.json`, stringifyData);
-        console.log(`${chalk.green.bold('Success:')} Step 5 -- Completed: Data successfully saved to file.`);
+        if (this.errors.length) {
+            console.log("The following errors occured while running the scrapper.\n", this.errors)
+        }
     }
     getGoogleFontsListAndMeta() {
         return this.googleFontsListAndMeta;
