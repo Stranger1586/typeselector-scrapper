@@ -18,8 +18,8 @@ class Scrapper {
     skippedFonts = [];
     googleFontsList;
     googleFontsVariable;
-    googleFontsMeta;
 
+    googleFontsMeta=[];
     googleFontsListAndMeta = [];
 
     cluster;
@@ -33,10 +33,12 @@ class Scrapper {
     }
     async initCluster(headless=true) {
         console.log(`${chalk.green.bold('Info:')} Launching the concurrent browser cluster.`);
+        
+        
         this.cluster = await Cluster.launch({
             concurrency: Cluster.CONCURRENCY_PAGE,
             maxConcurrency: 10,
-            monitor: true,
+            monitor: (process.env.IS_UNDER_DEVELOPMENT) ?  true: false,
             puppeteerOptions: {
                 headless,
                 defaultViewport: {
@@ -45,7 +47,6 @@ class Scrapper {
                 }
             }
         });
-
     }
     async generateGoogleFontsList() {
         console.log(`${chalk.cyan.bold('Info:')} Step 1: Fetching a list of all available google fonts...`);
@@ -132,9 +133,7 @@ class Scrapper {
         ];
         await this.getFontsMetaData();
     }
-    async getFontsMetaData() {
-        console.log(`${chalk.cyan.bold('Info:')} Step 4: Attempting to parse each font on the list...`);
-        const googleFontsList = this.getGoogleFontsList();
+    async setTask() {
         this.cluster.on('taskerror', (err, data) => {
             this.logError(`Error crawling ${(typeof data === "string") ? data : data.url}: ${err.message}`);
         });
@@ -156,9 +155,7 @@ class Scrapper {
             let fontMeta = await page.evaluate(() => {
                 if (!(document.querySelector('gf-sticky-navbar'))) {
                     return {
-                        redirectURL: document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href,
-                        hasSpecialText: true,
-                        placeholderText: document.querySelector("gf-content-editable").innerText
+                        redirectURL: document.querySelector('gf-specimen-navigation').querySelectorAll("a")[1].href
                     }
                 }
                 //  About Font
@@ -169,7 +166,6 @@ class Scrapper {
                         name: anchor.textContent,
                         url: anchor.href,
                     }
-                    const hasSpecialText = false;
                     // Font Info
                     const description = Array.from(document.querySelectorAll("section#about .specimen__about-description p")).map(({ innerHTML }) => (innerHTML));
 
@@ -186,7 +182,7 @@ class Scrapper {
                             bio: (bioEle) ? bioEle.innerHTML : null
                         }
                     });
-                    return { hasSpecialText, license, description, authors };
+                    return { license, description, authors };
                 };
                 return data();
 
@@ -214,11 +210,13 @@ class Scrapper {
                 delete fontMeta.redirectURL;
                 fontMeta = { ...fontMeta, ...response };
             }
-            this.googleFontsListAndMeta.push({
-                ...googleFontsList.find(gFont => gFont.id === data.font.id), fontMeta
-            });
+            fontMeta.id=data.font.id;
+            this.googleFontsMeta.push(fontMeta);
         });
-
+    }
+    async getFontsMetaData() {
+        console.log(`${chalk.cyan.bold('Info:')} Step 4: Attempting to parse each font on the list...`);
+        const googleFontsList = this.getGoogleFontsList();
         for (let i = 0; i < googleFontsList.length; i++) {
             const font = googleFontsList[i];
             this.cluster.queue({
@@ -257,52 +255,13 @@ class Scrapper {
             }
         );
     }
-    async parseFont(font) {
-        let fontMeta = {
-            description: [],
-            authors: [],
-            license: {
-                name: null,
-                url: null
-            }
-        };
-        //  About Font
-        fontMeta = () => {
-            // Font License
-            const anchor = document.querySelector("section#license .license__paragraph a");
-            const license = {
-                name: anchor.textContent,
-                url: anchor.href,
-            }
-            // Font Info
-            const description = Array.from(document.querySelectorAll("section#about .specimen__about-description p")).map(({ innerHTML }) => (innerHTML));
 
-            // Author Info
-            const authorBoxes = document.querySelectorAll("section#about .specimen__designers gf-designer");
-            const authors = Array.from(authorBoxes).map((ele) => {
-                const avatarEle = ele.querySelector('img');
-                const roleEle = ele.querySelector('.mat-text--secondary');
-                const bioEle = ele.querySelector('.designer-bio');
-                return {
-                    avatar: (avatarEle) ? avatarEle.src : null,
-                    name: ele.querySelector('[itemprop="name"]').textContent,
-                    role: (roleEle) ? roleEle.textContent : null,
-                    bio: (bioEle) ? bioEle.innerHTML : null
-                }
-            });
-            return { license, description, authors };
-        };
-
-        this.googleFontsListAndMeta.push({
-            ...this.googleFontsList.find(gFont => gFont.id === font.id), fontMeta
-        });
-    }
     saveData() {
         console.log(`${chalk.cyan.bold('Info:')} Step 5: Attempting to save all the meta data to a file by the name of 'fonts.json'...`);
-        const stringifyData = JSON.stringify(this.getGoogleFontsListAndMeta());
-        const date = new Date();
-        const timeStamp = date.getDate() + '-' + (date.getMonth() + 1) + '-' + date.getFullYear();
-        fs.writeFileSync(`./data/fonts.json`, stringifyData);
+        const fontsJSONString     = JSON.stringify(this.googleFontsList);
+        const fontsMetaJSONString = JSON.stringify(this.googleFontsMeta);
+        fs.writeFileSync(`./data/fonts.json`, fontsJSONString);
+        fs.writeFileSync(`./data/fonts-meta.json`, fontsMetaJSONString);
         if (this.errors.length) {
             console.log("The following errors occured while running the scrapper.\n", this.errors)
         }
