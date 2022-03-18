@@ -19,8 +19,7 @@ class Scrapper {
     googleFontsList;
     googleFontsVariable;
 
-    googleFontsMeta=[];
-    googleFontsListAndMeta = [];
+    googleFontsMeta = [];
 
     cluster;
     errors = [];
@@ -31,14 +30,14 @@ class Scrapper {
         this.nonConcurrentBrowser.browserInstance = await puppeteer.launch();
         this.nonConcurrentBrowser.page = await this.nonConcurrentBrowser.browserInstance.newPage();
     }
-    async initCluster(headless=true) {
+    async initCluster(headless = true) {
         console.log(`${chalk.green.bold('Info:')} Launching the concurrent browser cluster.`);
-        
-        
+
+
         this.cluster = await Cluster.launch({
             concurrency: Cluster.CONCURRENCY_PAGE,
-            maxConcurrency: 10,
-            monitor: (process.env.IS_UNDER_DEVELOPMENT) ?  true: false,
+            maxConcurrency: 5,
+            monitor: (process.env.IS_UNDER_DEVELOPMENT) ? true : false,
             puppeteerOptions: {
                 headless,
                 defaultViewport: {
@@ -69,6 +68,18 @@ class Scrapper {
         this.googleFontsVariable = await this.nonConcurrentBrowser.page.evaluate(() => {
             return (JSON.parse(document.getElementsByTagName('pre')[0].textContent));
         });
+        for (const variableFont in this.googleFontsVariable) {
+            for (const axe in this.googleFontsVariable[variableFont].axes) {
+                this.googleFontsVariable[variableFont].axes[axe]
+                for (let prop in this.googleFontsVariable[variableFont].axes[axe]) {
+                    if (prop==="default") {
+                        let temp=this.googleFontsVariable[variableFont].axes[axe].default;
+                        delete this.googleFontsVariable[variableFont].axes[axe].default;
+                        this.googleFontsVariable[variableFont].axes[axe].defaultValue=temp;
+                    }
+                }
+            }
+        }
         await this.closeNonConcurrentBrowser();
     }
     formatGoogleFontData() {
@@ -88,7 +99,7 @@ class Scrapper {
             };
             if (this.googleFontsVariable[font.id]) {
                 font.isVariable = true;
-                return { ...font, ...this.googleFontsVariable[font.id] }
+                return font;
             }
             return font;
         });
@@ -210,7 +221,8 @@ class Scrapper {
                 delete fontMeta.redirectURL;
                 fontMeta = { ...fontMeta, ...response };
             }
-            fontMeta.id=data.font.id;
+            fontMeta.id = data.font.id;
+            if (this.googleFontsVariable[fontMeta.id]) fontMeta.axes = this.googleFontsVariable[fontMeta.id].axes;
             this.googleFontsMeta.push(fontMeta);
         });
     }
@@ -258,16 +270,13 @@ class Scrapper {
 
     saveData() {
         console.log(`${chalk.cyan.bold('Info:')} Step 5: Attempting to save all the meta data to a file by the name of 'fonts.json'...`);
-        const fontsJSONString     = JSON.stringify(this.googleFontsList);
+        const fontsJSONString = JSON.stringify(this.googleFontsList);
         const fontsMetaJSONString = JSON.stringify(this.googleFontsMeta);
         fs.writeFileSync(`./data/fonts.json`, fontsJSONString);
         fs.writeFileSync(`./data/fonts-meta.json`, fontsMetaJSONString);
         if (this.errors.length) {
             console.log("The following errors occured while running the scrapper.\n", this.errors)
         }
-    }
-    getGoogleFontsListAndMeta() {
-        return this.googleFontsListAndMeta;
     }
     async getPageJson() {
         return (JSON.parse(document.getElementsByTagName('pre')[0].textContent));

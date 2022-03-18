@@ -9,7 +9,7 @@ async function start() {
             await scrapper.init();
             await scrapper.generateGoogleFontsList();
             await scrapper.fetchGoogleVariableFontsList();
-            await scrapper.formatGoogleFontData();
+            scrapper.formatGoogleFontData();
             await scrapper.initCluster();
             await scrapper.setTask();
             await scrapper.getFontsMetaData();
